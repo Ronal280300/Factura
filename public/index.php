@@ -85,6 +85,29 @@
     .tab-content  { display: none; }
     .tab-content.active { display: block; }
 
+    /* ── Sub-tabs (dentro de Reporte) ──────────────────────── */
+    .sub-tabs {
+      display: flex;
+      gap: 3px;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 18px;
+    }
+    .sub-tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-sm);
+      transition: color .15s, border-color .15s;
+    }
+    .sub-tab:hover  { color: var(--blue); }
+    .sub-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .sub-content    { display: none; }
+    .sub-content.active { display: block; }
+
     /* ── Card ──────────────────────────────────────────────── */
     .card {
       background: var(--card-bg);
@@ -259,7 +282,7 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
-      min-width: 900px;
+      min-width: 800px;
     }
     thead th {
       background: #f0f4fa;
@@ -296,10 +319,37 @@
       white-space: nowrap;
     }
     tfoot td:first-child,
-    tfoot td:nth-child(2) { text-align: left; color: var(--blue); font-size: 12px; text-transform: uppercase; }
-    .col-diff-pos { color: var(--red);   font-weight: 600; }
-    .col-diff-neg { color: var(--green); font-weight: 600; }
-    .col-zero     { color: #bbb; }
+    tfoot td:nth-child(2) { text-align: left; color: var(--blue); font-size: 11px; text-transform: uppercase; }
+    /* Fila de proporcion en tfoot */
+    tfoot tr.tr-proporcion td {
+      background: #f0f7ff;
+      border-top: 1px dashed #c5d8f8;
+      color: var(--gray);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    tfoot tr.tr-proporcion td:first-child,
+    tfoot tr.tr-proporcion td:nth-child(2) { color: var(--gray); font-size: 11px; }
+
+    .col-zero { color: #bbb; }
+
+    /* ── Resumen combinado ─────────────────────────────────── */
+    .combinado-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .comb-card {
+      background: #f0f7ff;
+      border: 1px solid #c5d8f8;
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .comb-card .comb-val { font-size: 18px; font-weight: 700; color: var(--blue); }
+    .comb-card .comb-lbl { font-size: 11px; color: var(--text-sm); margin-top: 3px; }
+    .comb-card.green-card { background: var(--green-lt); border-color: #a5d6a7; }
+    .comb-card.green-card .comb-val { color: var(--green); }
 
     /* ── History Table ─────────────────────────────────────── */
     .hist-table thead th { text-align: left; }
@@ -329,25 +379,25 @@
     .info-bar span { font-size: 13px; color: var(--text-sm); }
     .info-bar strong { color: var(--text); }
 
-    /* ── Totales resumen IVA ───────────────────────────────── */
-    .iva-summary {
+    /* ── Chips de resumen rápido ───────────────────────────── */
+    .chips-row {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
-      margin-top: 6px;
+      margin-bottom: 18px;
     }
-    .iva-chip {
+    .chip {
       background: #e8f0fe;
       border: 1px solid #c5d8f8;
       border-radius: 6px;
       padding: 8px 14px;
       text-align: center;
-      min-width: 100px;
+      min-width: 110px;
     }
-    .iva-chip .chip-val  { font-size: 16px; font-weight: 700; color: var(--blue); }
-    .iva-chip .chip-lbl  { font-size: 11px; color: var(--text-sm); margin-top: 2px; }
-    .iva-chip.total      { background: #e8f5e9; border-color: #a5d6a7; }
-    .iva-chip.total .chip-val { color: var(--green); }
+    .chip .chip-val  { font-size: 15px; font-weight: 700; color: var(--blue); }
+    .chip .chip-lbl  { font-size: 11px; color: var(--text-sm); margin-top: 2px; }
+    .chip.green-chip { background: var(--green-lt); border-color: #a5d6a7; }
+    .chip.green-chip .chip-val { color: var(--green); }
 
     /* ── Utility ───────────────────────────────────────────── */
     .hidden   { display: none !important; }
@@ -373,12 +423,12 @@
     <h1>IVA Sync &mdash; Facturas Electrónicas</h1>
     <p>Sincronización y reporte de IVA &bull; Costa Rica</p>
   </div>
-  <span class="header-badge">v1.0</span>
+  <span class="header-badge">v1.1</span>
 </header>
 
 <div class="container">
 
-  <!-- Tabs -->
+  <!-- Tabs principales -->
   <div class="tabs">
     <button class="tab active" data-tab="sync">Sincronizar</button>
     <button class="tab"        data-tab="report">Reporte</button>
@@ -390,7 +440,6 @@
   ════════════════════════════════════════ -->
   <div id="tab-sync" class="tab-content active">
 
-    <!-- Formulario -->
     <div class="card">
       <div class="card-title">Rango de fechas a sincronizar</div>
       <div class="form-row">
@@ -409,7 +458,6 @@
       </p>
     </div>
 
-    <!-- Progreso (oculto hasta iniciar) -->
     <div class="card hidden" id="sync-progress-card">
       <div class="card-title">Progreso de sincronizacion
         <span id="sync-badge" class="badge badge-pending" style="margin-left:8px;">Pendiente</span>
@@ -425,7 +473,6 @@
       </div>
     </div>
 
-    <!-- Stats -->
     <div class="card hidden" id="sync-stats-card">
       <div class="card-title">Estadisticas</div>
       <div class="stats-grid" id="stats-grid">
@@ -460,7 +507,6 @@
       </div>
     </div>
 
-    <!-- Log -->
     <div class="card hidden" id="sync-log-card">
       <div class="card-title">Log de operaciones</div>
       <div class="log-console" id="log-console"></div>
@@ -487,56 +533,12 @@
           <input type="date" id="r-to">
         </div>
         <button class="btn btn-primary" id="btn-report">Generar reporte</button>
+        <button class="btn btn-outline hidden" id="btn-export">Exportar CSV</button>
       </div>
       <p class="text-sm mt-4">
         Solo se muestran facturas cuya <strong>FechaEmision del XML</strong> este dentro del rango indicado.
+        Las facturas se clasifican automaticamente en Bienes o Servicios segun la tasa de IVA y unidad de medida.
       </p>
-    </div>
-
-    <!-- Resumen IVA (oculto hasta generar) -->
-    <div class="card hidden" id="report-summary-card">
-      <div class="card-title">Resumen de IVA del periodo</div>
-      <div class="iva-summary" id="iva-summary"></div>
-      <div class="nota" id="report-nota" style="display:none"></div>
-    </div>
-
-    <!-- Tabla (oculto hasta generar) -->
-    <div class="card hidden" id="report-table-card">
-      <div class="info-bar">
-        <span id="report-count">0 facturas</span>
-        <div class="flex-gap">
-          <button class="btn btn-outline hidden" id="btn-export">Exportar CSV</button>
-        </div>
-      </div>
-
-      <div class="table-wrap">
-        <table id="report-table">
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Emisor</th>
-              <th>Base gravada</th>
-              <th>Exento</th>
-              <th>IVA 1%</th>
-              <th>IVA 2%</th>
-              <th>IVA 4%</th>
-              <th>IVA 10%</th>
-              <th>IVA 13%</th>
-              <th>No sujeto</th>
-              <th>Total</th>
-              <th>Diferencia</th>
-            </tr>
-          </thead>
-          <tbody id="report-tbody"></tbody>
-          <tfoot id="report-tfoot"></tfoot>
-        </table>
-      </div>
-
-      <div class="nota">
-        <strong>Nota:</strong> La columna <em>Diferencia</em> muestra discrepancias de redondeo entre la
-        suma de IVA por linea del XML vs. el TotalImpuesto del ResumenFactura. Valores cercanos a cero son normales.
-        Las columnas <em>Motivo</em> y <em>Categoria</em> estan pendientes de implementar (requieren reglas por emisor).
-      </div>
     </div>
 
     <!-- Empty state inicial -->
@@ -546,6 +548,121 @@
         <p>Selecciona un rango de fechas y presiona <strong>Generar reporte</strong>.</p>
       </div>
     </div>
+
+    <!-- Contenido del reporte (oculto hasta generar) -->
+    <div id="report-content" class="hidden">
+
+      <!-- Sub-tabs -->
+      <div class="sub-tabs">
+        <button class="sub-tab active" data-sub="bienes">Gastos Bienes</button>
+        <button class="sub-tab"        data-sub="servicios">Gastos Servicios</button>
+        <button class="sub-tab"        data-sub="combinado">Resumen Combinado</button>
+      </div>
+
+      <!-- ── SUB: GASTOS BIENES ───────────────────────────── -->
+      <div id="sub-bienes" class="sub-content active">
+        <div class="card">
+          <div class="card-title">Gastos Bienes &mdash; IVA por tasa</div>
+          <div class="info-bar">
+            <span id="bienes-count">0 facturas</span>
+          </div>
+          <div class="table-wrap">
+            <table id="bienes-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Emisor</th>
+                  <th>Base 1%</th>
+                  <th>IVA 1%</th>
+                  <th>Base 2%</th>
+                  <th>IVA 2%</th>
+                  <th>Base 4%</th>
+                  <th>IVA 4%</th>
+                  <th>Base 13%</th>
+                  <th>IVA 13%</th>
+                  <th>No Sujeto</th>
+                  <th>Total IVA</th>
+                </tr>
+              </thead>
+              <tbody id="bienes-tbody"></tbody>
+              <tfoot id="bienes-tfoot"></tfoot>
+            </table>
+          </div>
+          <div class="nota">
+            <strong>Proporcion:</strong> Base imponible = IVA pagado &divide; tasa.
+            Ejemplo: si IVA 4% = &#x20A1;1,910 &rarr; Base = 1,910 / 0.04 = &#x20A1;47,750.
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SUB: GASTOS SERVICIOS ────────────────────────── -->
+      <div id="sub-servicios" class="sub-content">
+        <div class="card">
+          <div class="card-title">Gastos Servicios &mdash; IVA por tasa</div>
+          <div class="info-bar">
+            <span id="servicios-count">0 facturas</span>
+          </div>
+          <div class="table-wrap">
+            <table id="servicios-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Emisor</th>
+                  <th>Base 1%</th>
+                  <th>IVA 1%</th>
+                  <th>Base 10%</th>
+                  <th>IVA 10%</th>
+                  <th>Base 13%</th>
+                  <th>IVA 13%</th>
+                  <th>No Sujeto</th>
+                  <th>Total IVA</th>
+                </tr>
+              </thead>
+              <tbody id="servicios-tbody"></tbody>
+              <tfoot id="servicios-tfoot"></tfoot>
+            </table>
+          </div>
+          <div class="nota">
+            <strong>Nota:</strong> IVA 10% aplica exclusivamente a servicios (restaurantes, hoteles).
+            IVA 1% puede aparecer tanto en bienes como en servicios.
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SUB: RESUMEN COMBINADO ───────────────────────── -->
+      <div id="sub-combinado" class="sub-content">
+        <div class="card">
+          <div class="card-title">Resumen Combinado &mdash; Logica de declaracion</div>
+
+          <p class="text-sm" style="margin-bottom:14px;">
+            Combina bienes + servicios para calcular el total de impuestos de gastos del periodo,
+            siguiendo la misma logica del Excel contable.
+          </p>
+
+          <div class="combinado-grid" id="combinado-grid"></div>
+
+          <div class="nota" style="margin-top:16px;">
+            <strong>IVA 13% combinado</strong> = IVA 13% bienes + IVA 13% servicios &mdash;
+            ambas categorias pueden tener 13%, por eso se suman.<br>
+            <strong>Proporcion 13% total</strong> = IVA 13% combinado &divide; 0.13 = base imponible que genero ese IVA.<br>
+            <strong>Total IVA gastos</strong> = todos los IVAs de bienes + todos los IVAs de servicios (credito fiscal potencial).
+          </div>
+        </div>
+
+        <!-- Mini resumen bienes -->
+        <div class="card">
+          <div class="card-title">Detalle Bienes</div>
+          <div class="chips-row" id="bienes-chips"></div>
+        </div>
+
+        <!-- Mini resumen servicios -->
+        <div class="card">
+          <div class="card-title">Detalle Servicios</div>
+          <div class="chips-row" id="servicios-chips"></div>
+        </div>
+      </div>
+
+    </div><!-- /report-content -->
 
   </div><!-- /tab-report -->
 
@@ -604,7 +721,18 @@ function fmt(n) {
 
 function fmtDate(s) {
   if (!s) return '—';
-  return s.split(' ')[0]; // solo parte YYYY-MM-DD
+  return s.split(' ')[0];
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function zeroFmt(v) {
+  const n = parseFloat(v) || 0;
+  return n === 0
+    ? '<span class="col-zero">—</span>'
+    : '&#x20A1;' + fmt(n);
 }
 
 async function post(url, data) {
@@ -617,8 +745,6 @@ async function post(url, data) {
   try {
     return JSON.parse(text);
   } catch (_) {
-    // PHP devolvió algo que no es JSON (warning, error HTML, etc.)
-    // Extraer el primer mensaje útil del texto si es posible
     const preview = text.replace(/<[^>]+>/g, '').trim().slice(0, 200) || 'Respuesta no-JSON del servidor';
     return { ok: false, error: 'Respuesta inesperada del servidor: ' + preview };
   }
@@ -636,7 +762,7 @@ function badgeHtml(status) {
 }
 
 /* ────────────────────────────────────────────
-   TABS
+   TABS PRINCIPALES
 ───────────────────────────────────────────── */
 let histLoaded = false;
 
@@ -645,12 +771,23 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
-    const id = 'tab-' + btn.dataset.tab;
-    document.getElementById(id).classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'history' && !histLoaded) {
       loadHistory();
       histLoaded = true;
     }
+  });
+});
+
+/* ────────────────────────────────────────────
+   SUB-TABS (dentro de Reporte)
+───────────────────────────────────────────── */
+document.querySelectorAll('.sub-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.sub-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('sub-' + btn.dataset.sub).classList.add('active');
   });
 });
 
@@ -660,20 +797,16 @@ document.querySelectorAll('.tab').forEach(btn => {
 const logEl = $('log-console');
 
 function logLine(msg) {
-  const ts   = new Date().toLocaleTimeString('es-CR');
-  const cls  = msg.startsWith('OK')   ? 'log-ok'
-             : msg.startsWith('DUP')  ? 'log-dup'
-             : msg.startsWith('ERR')  ? 'log-err'
-             : msg.startsWith('SKIP') ? 'log-skip'
-             : 'log-info';
+  const ts  = new Date().toLocaleTimeString('es-CR');
+  const cls = msg.startsWith('OK')   ? 'log-ok'
+            : msg.startsWith('DUP')  ? 'log-dup'
+            : msg.startsWith('ERR')  ? 'log-err'
+            : msg.startsWith('SKIP') ? 'log-skip'
+            : 'log-info';
   const line = document.createElement('span');
   line.className = `log-line ${cls}`;
   line.innerHTML = `<span class="log-ts">[${ts}]</span>${escHtml(msg)}`;
   logEl.prepend(line);
-}
-
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function updateProgress(state) {
@@ -714,7 +847,6 @@ $('btn-sync').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = 'Sincronizando...';
 
-  // Mostrar cards
   ['sync-progress-card','sync-stats-card','sync-log-card'].forEach(id => {
     $(id).classList.remove('hidden');
   });
@@ -732,7 +864,6 @@ $('btn-sync').addEventListener('click', async () => {
       return;
     }
 
-    // ── Caso: ningún correo en el rango ──────────────────────
     if (start.zero_emails || start.total_messages === 0) {
       logLine('INFO No se encontraron correos en el rango ' + from + ' → ' + to + '.');
       logLine('INFO Recuerda que la búsqueda incluye buffer de ±5 días sobre el rango solicitado.');
@@ -748,7 +879,6 @@ $('btn-sync').addEventListener('click', async () => {
     updateProgress(start.state);
     updateStats(start.state);
 
-    // ── Loop de procesamiento por lotes ───────────────────────
     while (true) {
       const resp = await post('../api/process_next.php', { sync_run_id: start.sync_run_id });
 
@@ -764,7 +894,7 @@ $('btn-sync').addEventListener('click', async () => {
       if (resp.state.status === 'done' || resp.state.status === 'failed') {
         const n = resp.state.new_invoices || 0;
         logLine(`-- Sincronizacion finalizada. ${n} factura(s) nueva(s) guardada(s). --`);
-        histLoaded = false; // forzar recarga del historial
+        histLoaded = false;
         break;
       }
     }
@@ -779,7 +909,7 @@ $('btn-sync').addEventListener('click', async () => {
 /* ────────────────────────────────────────────
    TAB 2: REPORTE
 ───────────────────────────────────────────── */
-let reportData = null;
+let reportData  = null;
 let reportRange = { from: '', to: '' };
 
 $('btn-report').addEventListener('click', async () => {
@@ -808,110 +938,196 @@ $('btn-report').addEventListener('click', async () => {
 });
 
 function renderReport(resp) {
-  const { rows, totals, count } = resp;
+  const { bienes, servicios, combinado, count } = resp;
 
-  // Ocultar empty, mostrar cards
   $('report-empty').classList.add('hidden');
-  $('report-summary-card').classList.remove('hidden');
-  $('report-table-card').classList.remove('hidden');
+  $('report-content').classList.remove('hidden');
+  $('btn-export').classList.remove('hidden');
 
-  // Resumen IVA
-  const summary = $('iva-summary');
-  summary.innerHTML = [
-    { lbl: 'Base Gravada', val: totals.total_gravado },
-    { lbl: 'IVA 1%',      val: totals.iva_1  },
-    { lbl: 'IVA 2%',      val: totals.iva_2  },
-    { lbl: 'IVA 4%',      val: totals.iva_4  },
-    { lbl: 'IVA 10%',     val: totals.iva_10 },
-    { lbl: 'IVA 13%',     val: totals.iva_13 },
-    { lbl: 'IVA TOTAL',   val: totals.iva_total, cls: 'total' },
-    { lbl: 'Total Comprobantes', val: totals.total_comprobante, cls: 'total' },
+  renderBienes(bienes);
+  renderServicios(servicios);
+  renderCombinado(combinado, bienes.totals, servicios.totals);
+}
+
+/* ── Tabla Gastos Bienes ─────────────────────── */
+function renderBienes(data) {
+  const { rows, totals } = data;
+  $('bienes-count').innerHTML = `<strong>${rows.length}</strong> factura(s) con bienes`;
+
+  const tbody = $('bienes-tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:32px;color:#999;">Sin gastos de bienes en este periodo.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td>${fmtDate(r.fecha)}</td>
+      <td title="${escHtml(r.emisor)}">${escHtml(r.emisor || '—')}</td>
+      <td>${zeroFmt(r.base_1)}</td>
+      <td>${zeroFmt(r.iva_1)}</td>
+      <td>${zeroFmt(r.base_2)}</td>
+      <td>${zeroFmt(r.iva_2)}</td>
+      <td>${zeroFmt(r.base_4)}</td>
+      <td>${zeroFmt(r.iva_4)}</td>
+      <td>${zeroFmt(r.base_13)}</td>
+      <td>${zeroFmt(r.iva_13)}</td>
+      <td>${zeroFmt(r.no_sujeto)}</td>
+      <td><strong>&#x20A1;${fmt(r.iva_total)}</strong></td>
+    </tr>`).join('');
+  }
+
+  $('bienes-tfoot').innerHTML = `
+    <tr>
+      <td>TOTAL IVA</td><td></td>
+      <td>&#x20A1;${fmt(totals.base_1)}</td>
+      <td>&#x20A1;${fmt(totals.iva_1)}</td>
+      <td>&#x20A1;${fmt(totals.base_2)}</td>
+      <td>&#x20A1;${fmt(totals.iva_2)}</td>
+      <td>&#x20A1;${fmt(totals.base_4)}</td>
+      <td>&#x20A1;${fmt(totals.iva_4)}</td>
+      <td>&#x20A1;${fmt(totals.base_gravada)}</td>
+      <td>&#x20A1;${fmt(totals.iva_13)}</td>
+      <td>&#x20A1;${fmt(totals.no_sujeto)}</td>
+      <td><strong>&#x20A1;${fmt(totals.iva_total)}</strong></td>
+    </tr>
+    <tr class="tr-proporcion">
+      <td>PROPORCION</td><td>(base imponible)</td>
+      <td colspan="2">${totals.proporcion_1 > 0 ? '&#x20A1;'+fmt(totals.proporcion_1) : '—'}</td>
+      <td colspan="2">${totals.proporcion_2 > 0 ? '&#x20A1;'+fmt(totals.proporcion_2) : '—'}</td>
+      <td colspan="2">${totals.proporcion_4 > 0 ? '&#x20A1;'+fmt(totals.proporcion_4) : '—'}</td>
+      <td colspan="2">${totals.proporcion_13 > 0 ? '&#x20A1;'+fmt(totals.proporcion_13) : '—'}</td>
+      <td>—</td><td>—</td>
+    </tr>`;
+}
+
+/* ── Tabla Gastos Servicios ──────────────────── */
+function renderServicios(data) {
+  const { rows, totals } = data;
+  $('servicios-count').innerHTML = `<strong>${rows.length}</strong> factura(s) con servicios`;
+
+  const tbody = $('servicios-tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:#999;">Sin gastos de servicios en este periodo.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td>${fmtDate(r.fecha)}</td>
+      <td title="${escHtml(r.emisor)}">${escHtml(r.emisor || '—')}</td>
+      <td>${zeroFmt(r.base_1)}</td>
+      <td>${zeroFmt(r.iva_1)}</td>
+      <td>${zeroFmt(r.base_10)}</td>
+      <td>${zeroFmt(r.iva_10)}</td>
+      <td>${zeroFmt(r.base_13)}</td>
+      <td>${zeroFmt(r.iva_13)}</td>
+      <td>${zeroFmt(r.no_sujeto)}</td>
+      <td><strong>&#x20A1;${fmt(r.iva_total)}</strong></td>
+    </tr>`).join('');
+  }
+
+  $('servicios-tfoot').innerHTML = `
+    <tr>
+      <td>TOTAL IVA</td><td></td>
+      <td>&#x20A1;${fmt(totals.base_1)}</td>
+      <td>&#x20A1;${fmt(totals.iva_1)}</td>
+      <td>&#x20A1;${fmt(totals.base_gravada)}</td>
+      <td>&#x20A1;${fmt(totals.iva_10)}</td>
+      <td></td>
+      <td>&#x20A1;${fmt(totals.iva_13)}</td>
+      <td>&#x20A1;${fmt(totals.no_sujeto)}</td>
+      <td><strong>&#x20A1;${fmt(totals.iva_total)}</strong></td>
+    </tr>
+    <tr class="tr-proporcion">
+      <td>PROPORCION</td><td>(base imponible)</td>
+      <td colspan="2">${totals.proporcion_1  > 0 ? '&#x20A1;'+fmt(totals.proporcion_1)  : '—'}</td>
+      <td colspan="2">${totals.proporcion_10 > 0 ? '&#x20A1;'+fmt(totals.proporcion_10) : '—'}</td>
+      <td colspan="2">${totals.proporcion_13 > 0 ? '&#x20A1;'+fmt(totals.proporcion_13) : '—'}</td>
+      <td>—</td><td>—</td>
+    </tr>`;
+}
+
+/* ── Resumen Combinado ───────────────────────── */
+function renderCombinado(combinado, bTotals, sTotals) {
+  $('combinado-grid').innerHTML = [
+    { lbl: 'IVA 13% Combinado',       val: combinado.iva_13_combinado,        desc: 'Bienes 13% + Servicios 13%' },
+    { lbl: 'Proporcion 13% Total',     val: combinado.proporcion_13_combinado, desc: 'IVA 13% combinado / 0.13' },
+    { lbl: 'Total IVA Gastos',         val: combinado.total_iva_gastos,        desc: 'Todos los IVAs bienes + servicios', cls:'green-card' },
+    { lbl: 'Proporcion Total Gastos',  val: combinado.proporcion_total,        desc: 'Base imponible total del periodo', cls:'green-card' },
   ].map(c => `
-    <div class="iva-chip ${c.cls || ''}">
+    <div class="comb-card ${c.cls || ''}">
+      <div class="comb-val">&#x20A1;${fmt(c.val)}</div>
+      <div class="comb-lbl"><strong>${c.lbl}</strong></div>
+      <div class="comb-lbl" style="margin-top:4px;">${c.desc}</div>
+    </div>
+  `).join('');
+
+  // Chips bienes
+  $('bienes-chips').innerHTML = [
+    { lbl:'IVA 1% Bienes',   val: bTotals.iva_1  },
+    { lbl:'IVA 2% Bienes',   val: bTotals.iva_2  },
+    { lbl:'IVA 4% Bienes',   val: bTotals.iva_4  },
+    { lbl:'IVA 13% Bienes',  val: bTotals.iva_13 },
+    { lbl:'Total IVA Bienes',val: bTotals.iva_total, cls:'green-chip' },
+  ].map(c => `
+    <div class="chip ${c.cls||''}">
       <div class="chip-val">&#x20A1;${fmt(c.val)}</div>
       <div class="chip-lbl">${c.lbl}</div>
     </div>
   `).join('');
 
-  // Info bar
-  $('report-count').innerHTML = `<strong>${count}</strong> factura(s) en el periodo`;
-  $('btn-export').classList.remove('hidden');
-
-  // Tbody
-  const tbody = $('report-tbody');
-  if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:32px;color:#999;">No hay facturas en este rango.</td></tr>';
-  } else {
-    tbody.innerHTML = rows.map(r => {
-      const diff = parseFloat(r.diferencia) || 0;
-      const diffCls = Math.abs(diff) < 0.01 ? 'col-zero'
-                    : diff > 0 ? 'col-diff-pos' : 'col-diff-neg';
-      return `<tr>
-        <td>${fmtDate(r.fecha)}</td>
-        <td title="${escHtml(r.emisor || '')}">${escHtml(r.emisor || '—')}</td>
-        <td>${fmt(r.total_gravado)}</td>
-        <td>${fmt(r.total_exento)}</td>
-        <td>${fmt(r.iva_1)}</td>
-        <td>${fmt(r.iva_2)}</td>
-        <td>${fmt(r.iva_4)}</td>
-        <td>${fmt(r.iva_10)}</td>
-        <td>${fmt(r.iva_13)}</td>
-        <td>${fmt(r.no_sujeto_base)}</td>
-        <td><strong>${fmt(r.total_comprobante)}</strong></td>
-        <td class="${diffCls}">${diff === 0 ? '0.00' : fmt(diff)}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  // Tfoot totales
-  $('report-tfoot').innerHTML = `<tr>
-    <td>TOTAL (${count})</td>
-    <td></td>
-    <td>${fmt(totals.total_gravado)}</td>
-    <td>${fmt(totals.total_exento)}</td>
-    <td>${fmt(totals.iva_1)}</td>
-    <td>${fmt(totals.iva_2)}</td>
-    <td>${fmt(totals.iva_4)}</td>
-    <td>${fmt(totals.iva_10)}</td>
-    <td>${fmt(totals.iva_13)}</td>
-    <td>${fmt(totals.no_sujeto_base)}</td>
-    <td>${fmt(totals.total_comprobante)}</td>
-    <td>${fmt(totals.diferencia)}</td>
-  </tr>`;
+  // Chips servicios
+  $('servicios-chips').innerHTML = [
+    { lbl:'IVA 1% Servicios',   val: sTotals.iva_1  },
+    { lbl:'IVA 10% Servicios',  val: sTotals.iva_10 },
+    { lbl:'IVA 13% Servicios',  val: sTotals.iva_13 },
+    { lbl:'Total IVA Servicios',val: sTotals.iva_total, cls:'green-chip' },
+  ].map(c => `
+    <div class="chip ${c.cls||''}">
+      <div class="chip-val">&#x20A1;${fmt(c.val)}</div>
+      <div class="chip-lbl">${c.lbl}</div>
+    </div>
+  `).join('');
 }
 
-// Exportar CSV
+/* ── Exportar CSV ────────────────────────────── */
 $('btn-export').addEventListener('click', () => {
   if (!reportData) return;
-  const { rows, totals } = reportData;
-
-  const headers = ['Fecha','Emisor','Cedula','Base Gravada','Exento',
-                   'IVA 1%','IVA 2%','IVA 4%','IVA 10%','IVA 13%',
-                   'No Sujeto','Total','Diferencia'];
+  const { bienes, servicios } = reportData;
 
   const esc = v => {
     if (v === null || v === undefined) return '';
     const s = String(v);
     return s.includes(',') || s.includes('"') || s.includes('\n')
-      ? '"' + s.replace(/"/g,'""') + '"'
-      : s;
+      ? '"' + s.replace(/"/g,'""') + '"' : s;
   };
 
-  const lines = [headers.join(',')];
-  for (const r of rows) {
-    lines.push([
-      r.fecha, esc(r.emisor), r.cedula,
-      r.total_gravado, r.total_exento,
-      r.iva_1, r.iva_2, r.iva_4, r.iva_10, r.iva_13,
-      r.no_sujeto_base, r.total_comprobante, r.diferencia
-    ].join(','));
+  const lines = [];
+
+  // Bienes
+  lines.push('=== GASTOS BIENES ===');
+  lines.push(['Fecha','Emisor','Base 1%','IVA 1%','Base 2%','IVA 2%','Base 4%','IVA 4%','Base 13%','IVA 13%','No Sujeto','Total IVA'].join(','));
+  for (const r of bienes.rows) {
+    lines.push([r.fecha,esc(r.emisor),r.base_1,r.iva_1,r.base_2,r.iva_2,r.base_4,r.iva_4,r.base_13,r.iva_13,r.no_sujeto,r.iva_total].join(','));
   }
-  lines.push([
-    'TOTAL','','',
-    totals.total_gravado, totals.total_exento,
-    totals.iva_1, totals.iva_2, totals.iva_4, totals.iva_10, totals.iva_13,
-    totals.no_sujeto_base, totals.total_comprobante, totals.diferencia
-  ].join(','));
+  const bt = bienes.totals;
+  lines.push(['TOTAL','',bt.base_1,bt.iva_1,bt.base_2,bt.iva_2,bt.base_4,bt.iva_4,bt.base_gravada,bt.iva_13,bt.no_sujeto,bt.iva_total].join(','));
+  lines.push(['PROPORCION','',bt.proporcion_1,'',bt.proporcion_2,'',bt.proporcion_4,'',bt.proporcion_13,'','',''].join(','));
+  lines.push('');
+
+  // Servicios
+  lines.push('=== GASTOS SERVICIOS ===');
+  lines.push(['Fecha','Emisor','Base 1%','IVA 1%','Base 10%','IVA 10%','Base 13%','IVA 13%','No Sujeto','Total IVA'].join(','));
+  for (const r of servicios.rows) {
+    lines.push([r.fecha,esc(r.emisor),r.base_1,r.iva_1,r.base_10,r.iva_10,r.base_13,r.iva_13,r.no_sujeto,r.iva_total].join(','));
+  }
+  const st = servicios.totals;
+  lines.push(['TOTAL','',st.base_1,st.iva_1,st.base_gravada,st.iva_10,'',st.iva_13,st.no_sujeto,st.iva_total].join(','));
+  lines.push(['PROPORCION','',st.proporcion_1,'',st.proporcion_10,'',st.proporcion_13,'','',''].join(','));
+  lines.push('');
+
+  // Combinado
+  lines.push('=== RESUMEN COMBINADO ===');
+  const c = reportData.combinado;
+  lines.push(['IVA 13% Combinado',c.iva_13_combinado].join(','));
+  lines.push(['Proporcion 13% Total',c.proporcion_13_combinado].join(','));
+  lines.push(['Total IVA Gastos',c.total_iva_gastos].join(','));
+  lines.push(['Proporcion Total',c.proporcion_total].join(','));
 
   const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
