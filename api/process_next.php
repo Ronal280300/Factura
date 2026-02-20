@@ -34,7 +34,8 @@ try {
 
   if (!$rows) {
     // No hay más pendientes -> terminar
-    $pdo->prepare("UPDATE sync_runs SET status='done', finished_at=NOW() WHERE id=?")->execute([$syncRunId]);
+    // Al terminar: forzar processed_messages = total_messages para que la barra llegue al 100%
+    $pdo->prepare("UPDATE sync_runs SET status='done', finished_at=NOW(), processed_messages=total_messages WHERE id=?")->execute([$syncRunId]);
     $pdo->commit();
 
     $state = $pdo->query("SELECT * FROM sync_runs WHERE id = {$syncRunId}")->fetch();
@@ -73,10 +74,14 @@ try {
 
       $attachments = $imap->fetchXmlAttachmentsByUid($uid);
 
+      // Crear directorio si no existe
+      $xmlDir = __DIR__ . '/../storage/xml/';
+      if (!is_dir($xmlDir)) mkdir($xmlDir, 0755, true);
+
       if (!$attachments) {
         // No XML
         $pdo->prepare("UPDATE sync_run_items SET status='done' WHERE id=?")->execute([$r['id']]);
-        $pdo->prepare("INSERT INTO processed_emails (message_uid, processed_at, status) VALUES (?, NOW(), 'done')")->execute([(string)$uid]);
+        $pdo->prepare("INSERT IGNORE INTO processed_emails (message_uid, processed_at, status) VALUES (?, NOW(), 'done')")->execute([(string)$uid]);
         $pdo->prepare("UPDATE sync_runs SET processed_messages = processed_messages + 1 WHERE id=?")->execute([$syncRunId]);
         $lastItemsLog[] = "UID {$uid}: sin XML adjunto";
         continue;
@@ -155,7 +160,7 @@ try {
       }
 
       // Marcar email como procesado global
-      $pdo->prepare("INSERT INTO processed_emails (message_uid, processed_at, status) VALUES (?, NOW(), 'done')")->execute([(string)$uid]);
+      $pdo->prepare("INSERT IGNORE INTO processed_emails (message_uid, processed_at, status) VALUES (?, NOW(), 'done')")->execute([(string)$uid]);
 
       // Terminar item
       $pdo->prepare("UPDATE sync_run_items SET status='done' WHERE id=?")->execute([$r['id']]);
