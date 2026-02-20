@@ -613,7 +613,15 @@ async function post(url, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data || {})
   });
-  return r.json();
+  const text = await r.text();
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    // PHP devolvió algo que no es JSON (warning, error HTML, etc.)
+    // Extraer el primer mensaje útil del texto si es posible
+    const preview = text.replace(/<[^>]+>/g, '').trim().slice(0, 200) || 'Respuesta no-JSON del servidor';
+    return { ok: false, error: 'Respuesta inesperada del servidor: ' + preview };
+  }
 }
 
 function badgeHtml(status) {
@@ -716,24 +724,47 @@ $('btn-sync').addEventListener('click', async () => {
   try {
     logLine('Conectando a Gmail y buscando correos...');
     const start = await post('../api/start_sync.php', { from, to });
-    if (!start.ok) { logLine('ERR ' + start.error); btn.disabled = false; btn.textContent = 'Sincronizar'; return; }
 
-    logLine(`Sync #${start.sync_run_id} creado. ${start.total_messages} correo(s) encontrado(s).`);
+    if (!start.ok) {
+      logLine('ERR ' + (start.error || 'Error desconocido en start_sync'));
+      btn.disabled = false;
+      btn.textContent = 'Sincronizar';
+      return;
+    }
+
+    // ── Caso: ningún correo en el rango ──────────────────────
+    if (start.zero_emails || start.total_messages === 0) {
+      logLine('INFO No se encontraron correos en el rango ' + from + ' → ' + to + '.');
+      logLine('INFO Recuerda que la búsqueda incluye buffer de ±5 días sobre el rango solicitado.');
+      logLine('INFO Verifica que el correo configurado recibe facturas XML en ese periodo.');
+      updateProgress(start.state);
+      updateStats(start.state);
+      btn.disabled = false;
+      btn.textContent = 'Sincronizar';
+      return;
+    }
+
+    logLine(`Sync #${start.sync_run_id} iniciado. ${start.total_messages} correo(s) en cola.`);
     updateProgress(start.state);
     updateStats(start.state);
 
-    // Loop por lotes
+    // ── Loop de procesamiento por lotes ───────────────────────
     while (true) {
       const resp = await post('../api/process_next.php', { sync_run_id: start.sync_run_id });
-      if (!resp.ok) { logLine('ERR ' + resp.error); break; }
+
+      if (!resp.ok) {
+        logLine('ERR ' + (resp.error || 'Error desconocido en process_next'));
+        break;
+      }
 
       updateProgress(resp.state);
       updateStats(resp.state);
       (resp.last_items || []).forEach(it => logLine(it));
 
       if (resp.state.status === 'done' || resp.state.status === 'failed') {
-        logLine('-- Sincronizacion finalizada. ' + resp.state.new_invoices + ' factura(s) nueva(s) guardada(s). --');
-        histLoaded = false; // reset para recargar historial
+        const n = resp.state.new_invoices || 0;
+        logLine(`-- Sincronizacion finalizada. ${n} factura(s) nueva(s) guardada(s). --`);
+        histLoaded = false; // forzar recarga del historial
         break;
       }
     }
