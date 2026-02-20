@@ -30,12 +30,14 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE TABLE IF NOT EXISTS invoice_tax_breakdown (
   id INT AUTO_INCREMENT PRIMARY KEY,
   invoice_id INT NOT NULL,
-  tarifa DECIMAL(5,2) NOT NULL,           -- 13.00, 4.00, 2.00, 1.00, 0.00
+  tipo_gasto ENUM('bien','servicio') NOT NULL DEFAULT 'bien',
+  tarifa DECIMAL(5,2) NOT NULL,           -- 13.00, 10.00, 4.00, 2.00, 1.00, 0.00
   base DECIMAL(18,4) NOT NULL DEFAULT 0,
   impuesto DECIMAL(18,4) NOT NULL DEFAULT 0,
   FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
   INDEX (invoice_id),
-  INDEX (tarifa)
+  INDEX (tarifa),
+  INDEX (tipo_gasto)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sync_runs (
@@ -70,3 +72,16 @@ CREATE TABLE IF NOT EXISTS sync_run_items (
   INDEX (sync_run_id, status),
   UNIQUE KEY uniq_run_uid (sync_run_id, message_uid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- MIGRACION para instalaciones existentes (MySQL 8.0+):
+-- Ejecutar una sola vez si invoice_tax_breakdown ya existe sin tipo_gasto:
+--
+--   ALTER TABLE invoice_tax_breakdown
+--     ADD COLUMN IF NOT EXISTS tipo_gasto ENUM('bien','servicio') NOT NULL DEFAULT 'bien' AFTER invoice_id,
+--     ADD INDEX IF NOT EXISTS idx_tipo_gasto (tipo_gasto);
+--
+-- Para MySQL 5.x / MariaDB (verificar antes si la columna existe):
+--   ALTER TABLE invoice_tax_breakdown
+--     ADD COLUMN tipo_gasto ENUM('bien','servicio') NOT NULL DEFAULT 'bien' AFTER invoice_id;
+-- ─────────────────────────────────────────────────────────────────────────────

@@ -157,11 +157,11 @@ try {
           $invoiceId = (int)$pdo->lastInsertId();
 
           $insBr = $pdo->prepare(
-            "INSERT INTO invoice_tax_breakdown (invoice_id, tarifa, base, impuesto)
-             VALUES (?, ?, ?, ?)"
+            "INSERT INTO invoice_tax_breakdown (invoice_id, tipo_gasto, tarifa, base, impuesto)
+             VALUES (?, ?, ?, ?, ?)"
           );
           foreach ($parsed['breakdown'] as $b) {
-            $insBr->execute([$invoiceId, $b['tarifa'], $b['base'], $b['impuesto']]);
+            $insBr->execute([$invoiceId, $b['tipo_gasto'], $b['tarifa'], $b['base'], $b['impuesto']]);
           }
 
           $pdo->prepare("UPDATE sync_runs SET new_invoices = new_invoices + 1 WHERE id=?")->execute([$syncRunId]);
