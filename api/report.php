@@ -1,7 +1,16 @@
 <?php
+ob_start();
+ini_set('display_errors', '0');
+error_reporting(0);
 header('Content-Type: application/json');
 
 require __DIR__ . '/../app/Db.php';
+
+function jsonOut(array $data): void {
+  ob_end_clean();
+  echo json_encode($data, JSON_UNESCAPED_UNICODE);
+  exit;
+}
 
 try {
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -97,7 +106,7 @@ try {
         2
     );
 
-    echo json_encode([
+    jsonOut([
         'ok'     => true,
         'count'  => count($rows),
         'rows'   => $rows,
@@ -105,5 +114,5 @@ try {
     ]);
 
 } catch (Throwable $e) {
-    echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    jsonOut(['ok' => false, 'error' => $e->getMessage()]);
 }
