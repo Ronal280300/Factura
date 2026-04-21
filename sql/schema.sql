@@ -116,3 +116,39 @@ CREATE TABLE IF NOT EXISTS sync_run_items (
   INDEX (sync_run_id, status),
   UNIQUE KEY uniq_run_uid (sync_run_id, message_uid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Mensaje Receptor (aceptacion / aceptacion parcial / rechazo)
+-- Hacienda exige enviar uno por FE recibida en 8 dias habiles del mes siguiente.
+-- Solo lo aceptado da derecho a credito fiscal en el D-150.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS receptor_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  invoice_id INT NOT NULL,
+  clave VARCHAR(60) NOT NULL,                                  -- clave de la FE referenciada
+  consecutivo_receptor VARCHAR(20) NOT NULL,                   -- consecutivo del mensaje (20 digits)
+
+  mensaje ENUM('1','2','3') NOT NULL,                          -- 1=acepta, 2=acepta parcial, 3=rechaza
+  codigo_actividad VARCHAR(20) NULL,                           -- CAE del receptor al momento del envio
+  condicion_impuesto VARCHAR(5) NULL,                          -- 01..05 (uso del bien/servicio)
+  monto_total_impuesto_acreditar DECIMAL(18,4) NULL,
+  monto_total_gasto_aplicable    DECIMAL(18,4) NULL,
+  detalle_mensaje VARCHAR(255) NULL,
+
+  xml_firmado LONGTEXT NULL,                                   -- XML firmado XAdES-EPES (Base64 o texto)
+  xml_respuesta LONGTEXT NULL,                                 -- respuesta callback de Hacienda
+
+  estado_hacienda ENUM('pendiente','firmado','enviado','aceptado','rechazado','error') NOT NULL DEFAULT 'pendiente',
+  error TEXT NULL,
+
+  fecha_envio DATETIME NULL,
+  fecha_respuesta DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+  UNIQUE KEY uniq_clave_receptor (consecutivo_receptor),
+  INDEX idx_clave (clave),
+  INDEX idx_estado (estado_hacienda),
+  INDEX idx_invoice (invoice_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
