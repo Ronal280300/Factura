@@ -21,7 +21,8 @@ class InvoiceIngestor {
     ?DateTime $fromDate = null,   // opcional: descarta si fecha fuera de rango
     ?DateTime $toDate = null,
     ?array $receptorCedulas = null,  // opcional: filtro para 'received'
-    bool $strictReceptor = true
+    bool $strictReceptor = true,
+    ?string $xmlRawContent = null    // opcional: para calcular sha256
   ): array {
     if (!in_array($direction, ['received','issued'], true)) {
       throw new InvalidArgumentException("direction invalida: {$direction}");
@@ -49,6 +50,8 @@ class InvoiceIngestor {
       }
     }
 
+    $xmlSha = $xmlRawContent !== null ? hash('sha256', $xmlRawContent) : null;
+
     $pdo->beginTransaction();
     try {
       $pdo->prepare("
@@ -59,8 +62,8 @@ class InvoiceIngestor {
            moneda, tipo_cambio,
            total_gravado, total_exento, total_exonerado, total_impuesto, total_comprobante,
            total_gravado_crc, total_exento_crc, total_exonerado_crc, total_impuesto_crc, total_comprobante_crc,
-           impuesto_diff, xml_path)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           impuesto_diff, xml_path, xml_sha256)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ")->execute([
         $parsed['clave'],
         $direction,
@@ -89,6 +92,7 @@ class InvoiceIngestor {
         $parsed['total_comprobante_crc'],
         $parsed['impuesto_diff'],
         $xmlRelativePath,
+        $xmlSha,
       ]);
 
       $invoiceId = (int)$pdo->lastInsertId();

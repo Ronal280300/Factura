@@ -1,51 +1,49 @@
 <?php
+require_once __DIR__ . '/../app/Env.php';
+Env::load(__DIR__ . '/../.env');
+
 return [
   'db' => [
-    'host' => '127.0.0.1',
-    'name' => 'iva_sync',
-    'user' => 'root',
-    'pass' => '', // en XAMPP normalmente vacío
+    'host'    => Env::get('DB_HOST', '127.0.0.1'),
+    'name'    => Env::get('DB_NAME', 'iva_sync'),
+    'user'    => Env::get('DB_USER', 'root'),
+    'pass'    => Env::get('DB_PASS', ''),
     'charset' => 'utf8mb4',
   ],
 
   'imap' => [
-    'host' => 'imap.gmail.com',   // si es Gmail
-    'port' => 993,
-    'flags' => '/imap/ssl',
-    'username' => 'TU_CORREO_DE_FACTURAS@gmail.com',
-    'password' => 'TU_APP_PASSWORD', // si Gmail con 2FA
-    'mailbox'  => 'INBOX',
+    'host'     => Env::get('IMAP_HOST', 'imap.gmail.com'),
+    'port'     => Env::getInt('IMAP_PORT', 993),
+    'flags'    => Env::get('IMAP_FLAGS', '/imap/ssl'),
+    'username' => Env::get('IMAP_USERNAME', ''),
+    'password' => Env::get('IMAP_PASSWORD', ''),
+    'mailbox'  => Env::get('IMAP_MAILBOX', 'INBOX'),
   ],
 
-  // Para evitar "búsqueda histórica": buffer alrededor del rango solicitado (días)
-  'search_buffer_days' => 5,
+  'search_buffer_days' => Env::getInt('SEARCH_BUFFER_DAYS', 5),
+  'batch_size_default' => Env::getInt('BATCH_SIZE', 10),
 
-  // Tamaño del lote por request (para evitar timeouts)
-  'batch_size_default' => 10,
+  // ── Contribuyente ────────────────────────────────────────────────────────
+  'receptor_cedulas' => Env::getArray('RECEPTOR_CEDULAS'),
+  'strict_receptor'  => Env::getBool('STRICT_RECEPTOR', true),
 
-  // ── Contribuyente (receptor) ──────────────────────────────────────────────
-  // Cedula(s) del contribuyente. Se usan para descartar XMLs del buzon que
-  // NO estan dirigidos a este contribuyente (p. ej. correos reenviados, spam
-  // de facturas de otras empresas). Dejar vacio para desactivar el filtro.
-  //
-  // Acepta multiples cedulas (util para contadores que manejan varias empresas
-  // o personas fisicas con actividad lucrativa).
-  'receptor_cedulas' => [
-    // '3101123456',
-    // '112340567',
+  // ── Seguridad ────────────────────────────────────────────────────────────
+  'auth' => [
+    'enabled'     => Env::getBool('AUTH_ENABLED', true),
+    'app_secret'  => Env::get('APP_SECRET', ''),
+    'force_https' => Env::getBool('FORCE_HTTPS', true),
+    'session_ttl' => Env::getInt('SESSION_TTL', 28800),  // 8 horas
   ],
 
-  // Si true: XMLs con receptor distinto se descartan y se contabilizan en
-  // sync_runs.wrong_receptor. Si false: se guardan igualmente (util para
-  // revisar manualmente, no recomendado en produccion).
-  'strict_receptor' => true,
+  // ── Log ──────────────────────────────────────────────────────────────────
+  'log' => [
+    'level' => Env::get('LOG_LEVEL', 'info'),
+    'path'  => Env::get('LOG_PATH', __DIR__ . '/../logs/app.log'),
+  ],
 
-  // ── Integracion con Hacienda (API de Comprobantes Electronicos) ────────────
-  // Requerido para enviar Mensaje Receptor (aceptacion / parcial / rechazo).
-  // En sandbox usar api-stag / api.comprobanteselectronicos.go.cr/recepcion-sandbox
-  // En produccion usar api-prod  / api.comprobanteselectronicos.go.cr/recepcion
+  // ── Hacienda ─────────────────────────────────────────────────────────────
   'hacienda' => [
-    'env'            => 'sandbox',  // 'sandbox' | 'prod'
+    'env'            => Env::get('HACIENDA_ENV', 'sandbox'),
     'idp_url'        => [
       'sandbox' => 'https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token',
       'prod'    => 'https://idp.comprobanteselectronicos.go.cr/auth/realms/rut/protocol/openid-connect/token',
@@ -58,26 +56,15 @@ return [
       'sandbox' => 'api-stag',
       'prod'    => 'api-prod',
     ],
-    'username'       => '',                        // correo de ATV/TRIBU-CR del contribuyente
-    'password'       => '',                        // contrasena de ATV/TRIBU-CR
-    'cert_path'      => '',                        // ruta absoluta al .p12 del BCCR
-    'cert_password'  => '',                        // pin del .p12
+    'username'       => Env::get('HACIENDA_USERNAME', ''),
+    'password'       => Env::get('HACIENDA_PASSWORD', ''),
+    'cert_path'      => Env::get('HACIENDA_CERT_PATH', ''),
+    'cert_password'  => Env::get('HACIENDA_CERT_PASSWORD', ''),
 
-    // Politica XAdES-EPES (URL de la resolucion en Hacienda)
     'xades_policy_url'    => 'https://www.hacienda.go.cr/ATV/ComprobanteElectronico/docs/esquemas/2016/v4.3/Resolucion_Comprobantes_Electronicos_DGT-R-48-2016_4.3.pdf',
-    'xades_policy_digest' => '',                   // hash SHA-256 del PDF de la politica
+    'xades_policy_digest' => Env::get('XADES_POLICY_DIGEST', ''),
 
-    // Condicion del impuesto (uso del bien/servicio)
-    //   01 = gasto corriente       (IVA 100% acreditable)
-    //   02 = activo / proporcional (sujeto a proporcionalidad)
-    //   03 = gasto corriente y capital
-    //   04 = sin derecho a credito
-    //   05 = proporcionalidad
-    'condicion_impuesto_default' => '01',
-
-    // Si true, al terminar de sincronizar se envia MensajeReceptor '1' (acepta)
-    // automaticamente para todas las FE/FEE/FEC del contribuyente. NC/ND no
-    // requieren mensaje receptor.
-    'auto_accept' => false,
+    'condicion_impuesto_default' => Env::get('CONDICION_IMPUESTO_DEFAULT', '01'),
+    'auto_accept' => Env::getBool('HACIENDA_AUTO_ACCEPT', false),
   ],
 ];

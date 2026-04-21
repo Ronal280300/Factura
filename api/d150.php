@@ -12,6 +12,9 @@ ini_set('display_errors', '0');
 error_reporting(0);
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../app/bootstrap.php';
+Auth::requireAuth();
+
 require_once __DIR__ . '/../app/Db.php';
 require_once __DIR__ . '/../app/D150Calculator.php';
 

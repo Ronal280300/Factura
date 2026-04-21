@@ -15,6 +15,9 @@ ini_set('display_errors', '0');
 error_reporting(0);
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../../app/bootstrap.php';
+Auth::requireAuth('/login.php', ['admin','accountant']);
+
 require_once __DIR__ . '/../../app/Db.php';
 require_once __DIR__ . '/../../app/InvoiceXmlParser.php';
 require_once __DIR__ . '/../../app/InvoiceIngestor.php';
@@ -81,7 +84,7 @@ try {
 
     $rel = str_replace(__DIR__ . '/../../', '', $path);
     try {
-      $res = InvoiceIngestor::ingest($pdo, $parsed, 'issued', $rel, null, null, $receptorCedulas, $strict);
+      $res = InvoiceIngestor::ingest($pdo, $parsed, 'issued', $rel, null, null, $receptorCedulas, $strict, $it['content']);
       $stats[$res['status']]++;
       $stats['details'][] = [
         'file'       => $fn,
