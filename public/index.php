@@ -1,4 +1,9 @@
-<?php ?>
+<?php
+require_once __DIR__ . '/../app/bootstrap.php';
+if (Auth::countUsers() === 0) { header('Location: setup.php'); exit; }
+Auth::requireAuth('login.php');
+$__user = Auth::user();
+?>
 <!doctype html>
 <html lang="es">
 <head>

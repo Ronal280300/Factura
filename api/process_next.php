@@ -4,9 +4,13 @@ ini_set('display_errors', '0');
 error_reporting(0);
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../app/bootstrap.php';
+Auth::requireAuth('/login.php', ['admin','accountant']);
+
 require __DIR__ . '/../app/Db.php';
 require __DIR__ . '/../app/ImapClient.php';
 require __DIR__ . '/../app/InvoiceXmlParser.php';
+require __DIR__ . '/../app/InvoiceIngestor.php';
 
 function jsonOut(array $data): void {
   ob_end_clean();
@@ -132,123 +136,35 @@ try {
           continue;
         }
 
-        if (empty($parsed['clave']) || empty($parsed['fecha_emision'])) {
-          $lastItemsLog[] = "UID {$uid}: XML sin clave/fecha";
-          continue;
-        }
+        $xmlDate = !empty($parsed['fecha_emision']) ? new DateTime($parsed['fecha_emision']) : null;
+        $relPath = str_replace(__DIR__ . '/../', '', $storePath);
 
-        // Validacion: fecha del XML dentro del rango solicitado
-        $xmlDate = new DateTime($parsed['fecha_emision']);
-        if ($xmlDate < $fromDate || $xmlDate > $toDate) {
-          $pdo->prepare("UPDATE sync_runs SET out_of_range = out_of_range + 1 WHERE id=?")->execute([$syncRunId]);
-          $lastItemsLog[] = "UID {$uid}: fuera de rango ({$xmlDate->format('Y-m-d')})";
-          continue;
-        }
+        $res = InvoiceIngestor::ingest(
+          $pdo, $parsed, 'received', $relPath,
+          $fromDate, $toDate, $receptorCedulas, $strictReceptor,
+          $xmlContent
+        );
 
-        // Validacion: receptor debe ser el contribuyente configurado
-        if ($strictReceptor && $receptorCedulas) {
-          $recId = normCedula($parsed['receptor_identificacion'] ?? '');
-          if ($recId === '' || !in_array($recId, $receptorCedulas, true)) {
-            $pdo->prepare("UPDATE sync_runs SET wrong_receptor = wrong_receptor + 1 WHERE id=?")->execute([$syncRunId]);
-            $lastItemsLog[] = "UID {$uid}: receptor ajeno ({$recId}) — descartado";
-            continue;
-          }
-        }
-
-        // ── Guardar factura (dedupe por clave) ──────────────────
-        $pdo->beginTransaction();
-        try {
-          $pdo->prepare("
-            INSERT INTO invoices
-              (clave, tipo_documento, clave_referencia, numero_consecutivo, fecha_emision,
-               emisor_nombre, emisor_nombre_comercial, emisor_identificacion,
-               receptor_nombre, receptor_identificacion, receptor_tipo_identificacion, receptor_actividad_economica,
-               moneda, tipo_cambio,
-               total_gravado, total_exento, total_exonerado, total_impuesto, total_comprobante,
-               total_gravado_crc, total_exento_crc, total_exonerado_crc, total_impuesto_crc, total_comprobante_crc,
-               impuesto_diff,
-               xml_path)
-            VALUES (?, ?, ?, ?, ?,
-                    ?, ?, ?,
-                    ?, ?, ?, ?,
-                    ?, ?,
-                    ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?,
-                    ?,
-                    ?)
-          ")->execute([
-            $parsed['clave'],
-            $parsed['tipo_documento'],
-            $parsed['clave_referencia'],
-            $parsed['numero_consecutivo'],
-            $xmlDate->format('Y-m-d H:i:s'),
-
-            $parsed['emisor_nombre'],
-            $parsed['emisor_nombre_comercial'],
-            $parsed['emisor_identificacion'],
-
-            $parsed['receptor_nombre'],
-            $parsed['receptor_identificacion'],
-            $parsed['receptor_tipo_identificacion'],
-            $parsed['receptor_actividad_economica'],
-
-            $parsed['moneda'],
-            $parsed['tipo_cambio'],
-
-            $parsed['total_gravado'],
-            $parsed['total_exento'],
-            $parsed['total_exonerado'],
-            $parsed['total_impuesto'],
-            $parsed['total_comprobante'],
-
-            $parsed['total_gravado_crc'],
-            $parsed['total_exento_crc'],
-            $parsed['total_exonerado_crc'],
-            $parsed['total_impuesto_crc'],
-            $parsed['total_comprobante_crc'],
-
-            $parsed['impuesto_diff'],
-
-            str_replace(__DIR__ . '/../', '', $storePath),
-          ]);
-
-          $invoiceId = (int)$pdo->lastInsertId();
-
-          $insBr = $pdo->prepare(
-            "INSERT INTO invoice_tax_breakdown
-               (invoice_id, tipo_gasto, cabys, tarifa, base, impuesto, exonerado, impuesto_neto,
-                base_crc, impuesto_crc, exonerado_crc, impuesto_neto_crc)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-          );
-          foreach ($parsed['breakdown'] as $b) {
-            $impNeto = max(0.0, (float)$b['impuesto'] - (float)$b['exonerado']);
-            $insBr->execute([
-              $invoiceId,
-              $b['tipo_gasto'],
-              $b['cabys'],
-              $b['tarifa'],
-              $b['base'],
-              $b['impuesto'],
-              $b['exonerado'],
-              $impNeto,
-              $b['base_crc'],
-              $b['impuesto_crc'],
-              $b['exonerado_crc'],
-              $b['impuesto_neto_crc'],
-            ]);
-          }
-
+        if ($res['status'] === 'saved') {
           $pdo->prepare("UPDATE sync_runs SET new_invoices = new_invoices + 1 WHERE id=?")->execute([$syncRunId]);
-          $pdo->commit();
-
           $emisor = $parsed['emisor_nombre_comercial'] ?: $parsed['emisor_nombre'];
-          $tipo   = $parsed['tipo_documento'];
-          $lastItemsLog[] = "OK [{$tipo}] {$parsed['clave']} — {$emisor} ({$xmlDate->format('Y-m-d')})";
-
-        } catch (Throwable $eDup) {
-          $pdo->rollBack();
+          $fstr = $xmlDate ? $xmlDate->format('Y-m-d') : '?';
+          $lastItemsLog[] = "OK [{$parsed['tipo_documento']}] {$parsed['clave']} — {$emisor} ({$fstr})";
+        } elseif ($res['status'] === 'duplicate') {
           $pdo->prepare("UPDATE sync_runs SET duplicates = duplicates + 1 WHERE id=?")->execute([$syncRunId]);
           $lastItemsLog[] = "DUP {$parsed['clave']} (ya existía)";
+        } else {
+          // skipped
+          $reason = $res['reason'] ?? 'skipped';
+          if ($reason === 'fuera_de_rango') {
+            $pdo->prepare("UPDATE sync_runs SET out_of_range = out_of_range + 1 WHERE id=?")->execute([$syncRunId]);
+            $lastItemsLog[] = "UID {$uid}: fuera de rango";
+          } elseif ($reason === 'receptor_ajeno') {
+            $pdo->prepare("UPDATE sync_runs SET wrong_receptor = wrong_receptor + 1 WHERE id=?")->execute([$syncRunId]);
+            $lastItemsLog[] = "UID {$uid}: receptor ajeno — descartado";
+          } else {
+            $lastItemsLog[] = "UID {$uid}: {$reason}";
+          }
         }
       } // foreach attachments
 
