@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS processed_emails (
 
 CREATE TABLE IF NOT EXISTS invoices (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  clave VARCHAR(60) NOT NULL UNIQUE,
+  clave VARCHAR(60) NOT NULL,
+  direction ENUM('received','issued') NOT NULL DEFAULT 'received',
   tipo_documento ENUM('FE','TE','NC','ND','FEE','FEC','REP') NOT NULL DEFAULT 'FE',
   clave_referencia VARCHAR(60) NULL,                        -- para NC/ND: clave de la FE original
   numero_consecutivo VARCHAR(30) NULL,
@@ -54,8 +55,11 @@ CREATE TABLE IF NOT EXISTS invoices (
   xml_path VARCHAR(255) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
+  UNIQUE KEY uniq_clave_direction (clave, direction),
+  INDEX idx_direction (direction),
   INDEX idx_tipo_doc (tipo_documento),
   INDEX idx_receptor_id (receptor_identificacion),
+  INDEX idx_emisor_id (emisor_identificacion),
   INDEX idx_clave_ref (clave_referencia),
   INDEX idx_fecha (fecha_emision)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -151,4 +155,24 @@ CREATE TABLE IF NOT EXISTS receptor_messages (
   INDEX idx_clave (clave),
   INDEX idx_estado (estado_hacienda),
   INDEX idx_invoice (invoice_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Prorrateo anual (Art. 31 Ley IVA): cuando el contribuyente realiza
+-- operaciones gravadas Y exentas, el credito fiscal es deducible solo
+-- en proporcion a las ventas gravadas.
+--   ratio = ventas_gravadas_con_derecho / total_ventas
+-- Ratio provisional (enero..noviembre) = definitivo del ano anterior.
+-- Ratio definitivo (diciembre) = calculado con ventas reales del ano.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS prorrateo_anual (
+  anio SMALLINT NOT NULL PRIMARY KEY,
+  ratio_provisional DECIMAL(8,6) NOT NULL DEFAULT 1.000000,  -- 0..1 (1.0 = 100% acreditable)
+  ratio_definitivo  DECIMAL(8,6) NULL,
+  ventas_gravadas   DECIMAL(18,4) NULL,
+  ventas_exentas    DECIMAL(18,4) NULL,
+  ventas_no_sujetas DECIMAL(18,4) NULL,
+  total_ventas      DECIMAL(18,4) NULL,
+  calculado_en      DATETIME NULL,
+  notas TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
