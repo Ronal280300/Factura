@@ -1,0 +1,24 @@
+# Dependencias
+/vendor/
+composer.lock
+
+# Storage (XMLs descargados, NO versionar)
+/storage/
+
+# Certificados y secretos (NUNCA commitear)
+*.p12
+*.pfx
+*.key
+.env
+.env.local
+config/config.local.php
+
+# Logs
+*.log
+/logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store

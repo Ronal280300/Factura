@@ -1,0 +1,19 @@
+{
+  "name": "ronal280300/factura",
+  "description": "IVA Sync — ingesta de Factura Electronica v4.4 y MensajeReceptor para Hacienda CR",
+  "type": "project",
+  "require": {
+    "php": ">=8.0",
+    "ext-imap": "*",
+    "ext-openssl": "*",
+    "ext-curl": "*",
+    "ext-dom": "*",
+    "ext-pdo": "*"
+  },
+  "require-dev": {
+    "robrichards/xmlseclibs": "^3.1"
+  },
+  "suggest": {
+    "robrichards/xmlseclibs": "Requerido para firmar Mensaje Receptor con XAdES-EPES (Fase 2)."
+  }
+}

@@ -14,13 +14,21 @@ function jsonOut(array $data): void {
   exit;
 }
 
+/** Normaliza cedula: solo digitos. */
+function normCedula($s): string {
+  return preg_replace('/\D+/', '', (string)$s);
+}
+
 try {
   $input     = json_decode(file_get_contents('php://input'), true) ?? [];
   $syncRunId = (int)($input['sync_run_id'] ?? 0);
   if (!$syncRunId) throw new Exception('sync_run_id requerido');
 
-  $cfg       = require __DIR__ . '/../config/config.php';
-  $batchSize = (int)($cfg['batch_size_default'] ?? 10);
+  $cfg             = require __DIR__ . '/../config/config.php';
+  $batchSize       = (int)($cfg['batch_size_default'] ?? 10);
+  $receptorCedulas = array_map('normCedula', $cfg['receptor_cedulas'] ?? []);
+  $receptorCedulas = array_values(array_filter($receptorCedulas));
+  $strictReceptor  = (bool)($cfg['strict_receptor'] ?? true);
 
   $pdo = Db::pdo();
 
@@ -72,7 +80,6 @@ try {
   $fromDate     = new DateTime($runRow['from_date'] . ' 00:00:00');
   $toDate       = new DateTime($runRow['to_date']   . ' 23:59:59');
 
-  // Crear directorio de almacenamiento si no existe
   $xmlDir = __DIR__ . '/../storage/xml/';
   if (!is_dir($xmlDir)) mkdir($xmlDir, 0755, true);
 
@@ -90,7 +97,6 @@ try {
         continue;
       }
 
-      // ── Descargar adjuntos XML ──────────────────────────────────
       $attachments = $imap->fetchXmlAttachmentsByUid($uid);
 
       if (!$attachments) {
@@ -106,20 +112,32 @@ try {
       foreach ($attachments as $att) {
         $xmlContent = $att['content'];
 
-        // Guardar copia del XML para auditoría
+        // Guardar copia del XML para auditoría (5 años minimo por ley)
         $safeName   = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $att['filename'] ?? ('uid_' . $uid . '.xml'));
         $storePath  = $xmlDir . time() . '_' . $uid . '_' . $safeName;
         file_put_contents($storePath, $xmlContent);
 
-        // ── Parsear XML ─────────────────────────────────────────
-        $parsed = InvoiceXmlParser::parse($xmlContent);
-
-        if (empty($parsed['clave']) || empty($parsed['fecha_emision'])) {
-          $lastItemsLog[] = "UID {$uid}: XML inválido (sin clave/fecha)";
+        // Ignorar Mensaje Receptor (respuestas de aceptacion que no son FE)
+        if (stripos($xmlContent, '<MensajeReceptor') !== false ||
+            stripos($xmlContent, '<MensajeHacienda') !== false) {
+          $lastItemsLog[] = "UID {$uid}: mensaje Hacienda/Receptor (ignorado)";
           continue;
         }
 
-        // Validación 2: fecha del XML debe estar en el rango exacto
+        // ── Parsear XML ─────────────────────────────────────────
+        try {
+          $parsed = InvoiceXmlParser::parse($xmlContent);
+        } catch (Throwable $ePar) {
+          $lastItemsLog[] = "UID {$uid}: XML no parseable — " . $ePar->getMessage();
+          continue;
+        }
+
+        if (empty($parsed['clave']) || empty($parsed['fecha_emision'])) {
+          $lastItemsLog[] = "UID {$uid}: XML sin clave/fecha";
+          continue;
+        }
+
+        // Validacion: fecha del XML dentro del rango solicitado
         $xmlDate = new DateTime($parsed['fecha_emision']);
         if ($xmlDate < $fromDate || $xmlDate > $toDate) {
           $pdo->prepare("UPDATE sync_runs SET out_of_range = out_of_range + 1 WHERE id=?")->execute([$syncRunId]);
@@ -127,48 +145,105 @@ try {
           continue;
         }
 
+        // Validacion: receptor debe ser el contribuyente configurado
+        if ($strictReceptor && $receptorCedulas) {
+          $recId = normCedula($parsed['receptor_identificacion'] ?? '');
+          if ($recId === '' || !in_array($recId, $receptorCedulas, true)) {
+            $pdo->prepare("UPDATE sync_runs SET wrong_receptor = wrong_receptor + 1 WHERE id=?")->execute([$syncRunId]);
+            $lastItemsLog[] = "UID {$uid}: receptor ajeno ({$recId}) — descartado";
+            continue;
+          }
+        }
+
         // ── Guardar factura (dedupe por clave) ──────────────────
         $pdo->beginTransaction();
         try {
           $pdo->prepare("
             INSERT INTO invoices
-              (clave, numero_consecutivo, fecha_emision,
+              (clave, tipo_documento, clave_referencia, numero_consecutivo, fecha_emision,
                emisor_nombre, emisor_nombre_comercial, emisor_identificacion,
+               receptor_nombre, receptor_identificacion, receptor_tipo_identificacion, receptor_actividad_economica,
                moneda, tipo_cambio,
-               total_gravado, total_exento, total_impuesto, total_comprobante,
+               total_gravado, total_exento, total_exonerado, total_impuesto, total_comprobante,
+               total_gravado_crc, total_exento_crc, total_exonerado_crc, total_impuesto_crc, total_comprobante_crc,
+               impuesto_diff,
                xml_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?,
+                    ?)
           ")->execute([
             $parsed['clave'],
-            null,
+            $parsed['tipo_documento'],
+            $parsed['clave_referencia'],
+            $parsed['numero_consecutivo'],
             $xmlDate->format('Y-m-d H:i:s'),
+
             $parsed['emisor_nombre'],
             $parsed['emisor_nombre_comercial'],
             $parsed['emisor_identificacion'],
+
+            $parsed['receptor_nombre'],
+            $parsed['receptor_identificacion'],
+            $parsed['receptor_tipo_identificacion'],
+            $parsed['receptor_actividad_economica'],
+
             $parsed['moneda'],
             $parsed['tipo_cambio'],
+
             $parsed['total_gravado'],
             $parsed['total_exento'],
+            $parsed['total_exonerado'],
             $parsed['total_impuesto'],
             $parsed['total_comprobante'],
+
+            $parsed['total_gravado_crc'],
+            $parsed['total_exento_crc'],
+            $parsed['total_exonerado_crc'],
+            $parsed['total_impuesto_crc'],
+            $parsed['total_comprobante_crc'],
+
+            $parsed['impuesto_diff'],
+
             str_replace(__DIR__ . '/../', '', $storePath),
           ]);
 
           $invoiceId = (int)$pdo->lastInsertId();
 
           $insBr = $pdo->prepare(
-            "INSERT INTO invoice_tax_breakdown (invoice_id, tipo_gasto, tarifa, base, impuesto)
-             VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO invoice_tax_breakdown
+               (invoice_id, tipo_gasto, cabys, tarifa, base, impuesto, exonerado, impuesto_neto,
+                base_crc, impuesto_crc, exonerado_crc, impuesto_neto_crc)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
           );
           foreach ($parsed['breakdown'] as $b) {
-            $insBr->execute([$invoiceId, $b['tipo_gasto'], $b['tarifa'], $b['base'], $b['impuesto']]);
+            $impNeto = max(0.0, (float)$b['impuesto'] - (float)$b['exonerado']);
+            $insBr->execute([
+              $invoiceId,
+              $b['tipo_gasto'],
+              $b['cabys'],
+              $b['tarifa'],
+              $b['base'],
+              $b['impuesto'],
+              $b['exonerado'],
+              $impNeto,
+              $b['base_crc'],
+              $b['impuesto_crc'],
+              $b['exonerado_crc'],
+              $b['impuesto_neto_crc'],
+            ]);
           }
 
           $pdo->prepare("UPDATE sync_runs SET new_invoices = new_invoices + 1 WHERE id=?")->execute([$syncRunId]);
           $pdo->commit();
 
           $emisor = $parsed['emisor_nombre_comercial'] ?: $parsed['emisor_nombre'];
-          $lastItemsLog[] = "OK {$parsed['clave']} — {$emisor} ({$xmlDate->format('Y-m-d')})";
+          $tipo   = $parsed['tipo_documento'];
+          $lastItemsLog[] = "OK [{$tipo}] {$parsed['clave']} — {$emisor} ({$xmlDate->format('Y-m-d')})";
 
         } catch (Throwable $eDup) {
           $pdo->rollBack();
