@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS invoices (
   total_impuesto DECIMAL(18,4) NULL,
   total_comprobante DECIMAL(18,4) NULL,
 
+  -- Control manual por el usuario
+  excluida TINYINT(1) NOT NULL DEFAULT 0,
+  override_tipo ENUM('bien','servicio') NULL DEFAULT NULL,
+
   -- Montos ya convertidos a CRC (para reportes consolidados)
   total_gravado_crc DECIMAL(18,4) NULL,
   total_exento_crc DECIMAL(18,4) NULL,
@@ -118,6 +122,24 @@ CREATE TABLE IF NOT EXISTS sync_run_items (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- MIGRACION para instalaciones existentes (MySQL 8.0+):
+-- Ejecutar una sola vez si invoice_tax_breakdown ya existe sin tipo_gasto:
+--
+--   ALTER TABLE invoice_tax_breakdown
+--     ADD COLUMN IF NOT EXISTS tipo_gasto ENUM('bien','servicio') NOT NULL DEFAULT 'bien' AFTER invoice_id,
+--     ADD INDEX IF NOT EXISTS idx_tipo_gasto (tipo_gasto);
+--
+-- Para MySQL 5.x / MariaDB (verificar antes si la columna existe):
+--   ALTER TABLE invoice_tax_breakdown
+--     ADD COLUMN tipo_gasto ENUM('bien','servicio') NOT NULL DEFAULT 'bien' AFTER invoice_id;
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- MIGRACION v1.2: columnas de control manual en invoices
+-- Ejecutar si la tabla invoices ya existe sin estas columnas:
+--
+--   ALTER TABLE invoices
+--     ADD COLUMN excluida TINYINT(1) NOT NULL DEFAULT 0,
+--     ADD COLUMN override_tipo ENUM('bien','servicio') NULL DEFAULT NULL;
 -- Mensaje Receptor (aceptacion / aceptacion parcial / rechazo)
 -- Hacienda exige enviar uno por FE recibida en 8 dias habiles del mes siguiente.
 -- Solo lo aceptado da derecho a credito fiscal en el D-150.

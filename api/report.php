@@ -7,9 +7,9 @@ header('Content-Type: application/json');
 require __DIR__ . '/../app/Db.php';
 
 function jsonOut(array $data): void {
-  ob_end_clean();
-  echo json_encode($data, JSON_UNESCAPED_UNICODE);
-  exit;
+    ob_end_clean();
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 try {
@@ -24,7 +24,14 @@ try {
     if (!$fromDt || !$toDt) throw new Exception('Formato de fecha inválido.');
 
     $pdo = Db::pdo();
-
+    // Pivot por tipo_gasto Y tarifa en una sola query.
+    // Se usa COALESCE(i.override_tipo, b.tipo_gasto) para respetar sobrescrituras manuales.
+    // Se excluyen facturas marcadas como excluidas.
+    $sql = "
+        SELECT
+            i.id,
+            COALESCE(i.excluida, 0)       AS excluida,
+            i.override_tipo,
     // ── Reglas de signo y filtro por tipo de documento ─────────────────
     // FE, FEE, FEC, ND        → sumar (+1)  [gasto normal]
     // NC                      → restar (-1) [nota de credito: disminuye el gasto]
@@ -45,6 +52,36 @@ try {
             COALESCE(NULLIF(i.emisor_nombre_comercial,''), i.emisor_nombre)   AS emisor,
             i.emisor_identificacion                                           AS cedula,
             i.clave,
+            i.moneda,
+            COALESCE(i.total_gravado,     0)                                  AS total_gravado,
+            COALESCE(i.total_exento,      0)                                  AS total_exento,
+            COALESCE(i.total_impuesto,    0)                                  AS total_impuesto,
+            COALESCE(i.total_comprobante, 0)                                  AS total_comprobante,
+
+            -- ── BIENES (usando tipo efectivo con override) ──────────────────
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa =  1.00 THEN b.base     ELSE 0 END),0) AS bien_base_1,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa =  1.00 THEN b.impuesto ELSE 0 END),0) AS bien_iva_1,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa =  2.00 THEN b.base     ELSE 0 END),0) AS bien_base_2,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa =  2.00 THEN b.impuesto ELSE 0 END),0) AS bien_iva_2,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa =  4.00 THEN b.base     ELSE 0 END),0) AS bien_base_4,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa =  4.00 THEN b.impuesto ELSE 0 END),0) AS bien_iva_4,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa = 13.00 THEN b.base     ELSE 0 END),0) AS bien_base_13,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa = 13.00 THEN b.impuesto ELSE 0 END),0) AS bien_iva_13,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='bien' AND b.tarifa =  0.00 THEN b.base     ELSE 0 END),0) AS bien_no_sujeto,
+
+            -- ── SERVICIOS (usando tipo efectivo con override) ────────────────
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='servicio' AND b.tarifa =  1.00 THEN b.base     ELSE 0 END),0) AS srv_base_1,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='servicio' AND b.tarifa =  1.00 THEN b.impuesto ELSE 0 END),0) AS srv_iva_1,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='servicio' AND b.tarifa = 10.00 THEN b.base     ELSE 0 END),0) AS srv_base_10,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='servicio' AND b.tarifa = 10.00 THEN b.impuesto ELSE 0 END),0) AS srv_iva_10,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='servicio' AND b.tarifa = 13.00 THEN b.base     ELSE 0 END),0) AS srv_base_13,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='servicio' AND b.tarifa = 13.00 THEN b.impuesto ELSE 0 END),0) AS srv_iva_13,
+            COALESCE(SUM(CASE WHEN COALESCE(i.override_tipo, b.tipo_gasto)='servicio' AND b.tarifa =  0.00 THEN b.base     ELSE 0 END),0) AS srv_no_sujeto
+
+        FROM invoices i
+        LEFT JOIN invoice_tax_breakdown b ON b.invoice_id = i.id
+        WHERE (i.excluida IS NULL OR i.excluida = 0)
+          AND i.fecha_emision >= :from AND i.fecha_emision <= :to
             i.clave_referencia,
             COALESCE(i.moneda,'CRC')                                          AS moneda,
             COALESCE(i.total_comprobante_crc, i.total_comprobante, 0)         AS total_comprobante,
@@ -89,6 +126,20 @@ try {
     $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
+    // Acumuladores de totales — ahora con base individual por columna
+    $bienTotals = [
+        'base_1'=>0,'iva_1'=>0,
+        'base_2'=>0,'iva_2'=>0,
+        'base_4'=>0,'iva_4'=>0,
+        'base_13'=>0,'iva_13'=>0,
+        'no_sujeto'=>0,'base_gravada'=>0,
+    ];
+    $srvTotals = [
+        'base_1'=>0,'iva_1'=>0,
+        'base_10'=>0,'iva_10'=>0,
+        'base_13'=>0,'iva_13'=>0,
+        'no_sujeto'=>0,'base_gravada'=>0,
+    ];
     $bienTotals = ['iva_1'=>0,'iva_2'=>0,'iva_4'=>0,'iva_13'=>0,'no_sujeto'=>0,'base_gravada'=>0];
     $srvTotals  = ['iva_1'=>0,'iva_4'=>0,'iva_10'=>0,'iva_13'=>0,'no_sujeto'=>0,'base_gravada'=>0];
 
@@ -96,6 +147,38 @@ try {
     $serviciosRows = [];
 
     foreach ($allRows as $row) {
+        $mes = $meses[(int)$row['mes_num']] ?? '';
+
+        // ── Valores de BIENES ────────────────────────────────────
+        $bienBase1  = (float)$row['bien_base_1'];
+        $bienIva1   = (float)$row['bien_iva_1'];
+        $bienBase2  = (float)$row['bien_base_2'];
+        $bienIva2   = (float)$row['bien_iva_2'];
+        $bienBase4  = (float)$row['bien_base_4'];
+        $bienIva4   = (float)$row['bien_iva_4'];
+        $bienBase13 = (float)$row['bien_base_13'];
+        $bienIva13  = (float)$row['bien_iva_13'];
+        $bienNoSuj  = (float)$row['bien_no_sujeto'];
+        $bienIvaTotal  = $bienIva1 + $bienIva2 + $bienIva4 + $bienIva13;
+        $bienBaseTotal = $bienBase1 + $bienBase2 + $bienBase4 + $bienBase13;
+
+        // ── Valores de SERVICIOS ──────────────────────────────────
+        $srvBase1  = (float)$row['srv_base_1'];
+        $srvIva1   = (float)$row['srv_iva_1'];
+        $srvBase10 = (float)$row['srv_base_10'];
+        $srvIva10  = (float)$row['srv_iva_10'];
+        $srvBase13 = (float)$row['srv_base_13'];
+        $srvIva13  = (float)$row['srv_iva_13'];
+        $srvNoSuj  = (float)$row['srv_no_sujeto'];
+        $srvIvaTotal  = $srvIva1 + $srvIva10 + $srvIva13;
+        $srvBaseTotal = $srvBase1 + $srvBase10 + $srvBase13;
+
+        // Solo agregar a la tabla si hay datos de ese tipo
+        if ($bienBaseTotal > 0 || $bienIvaTotal > 0 || $bienNoSuj > 0) {
+            $bienesRows[] = [
+                'id'           => (int)$row['id'],
+                'excluida'     => (bool)$row['excluida'],
+                'override_tipo'=> $row['override_tipo'],
         $signo = (int)$row['signo'];                 // +1 o -1 segun tipo_documento
         $mes   = $meses[(int)$row['mes_num']] ?? '';
         $tipo  = $row['tipo_documento'];
@@ -148,6 +231,9 @@ try {
 
         if (abs($srvBaseTotal) > 0.005 || abs($srvIvaTotal) > 0.005 || abs($srvNoSuj) > 0.005) {
             $serviciosRows[] = [
+                'id'           => (int)$row['id'],
+                'excluida'     => (bool)$row['excluida'],
+                'override_tipo'=> $row['override_tipo'],
                 'tipo_doc'     => $tipo,
                 'fecha'        => $row['fecha'],
                 'mes'          => $mes,
@@ -168,6 +254,23 @@ try {
             ];
         }
 
+        // Acumular totales — incluyendo base por columna individualmente
+        $bienTotals['base_1']      += $bienBase1;
+        $bienTotals['iva_1']       += $bienIva1;
+        $bienTotals['base_2']      += $bienBase2;
+        $bienTotals['iva_2']       += $bienIva2;
+        $bienTotals['base_4']      += $bienBase4;
+        $bienTotals['iva_4']       += $bienIva4;
+        $bienTotals['base_13']     += $bienBase13;
+        $bienTotals['iva_13']      += $bienIva13;
+        $bienTotals['no_sujeto']   += $bienNoSuj;
+        $bienTotals['base_gravada']+= $bienBaseTotal;
+
+        $srvTotals['base_1']       += $srvBase1;
+        $srvTotals['iva_1']        += $srvIva1;
+        $srvTotals['base_10']      += $srvBase10;
+        $srvTotals['iva_10']       += $srvIva10;
+        $srvTotals['base_13']      += $srvBase13;
         $bienTotals['iva_1']        += $bienIva1;
         $bienTotals['iva_2']        += $bienIva2;
         $bienTotals['iva_4']        += $bienIva4;
@@ -192,6 +295,17 @@ try {
     $bienTotals['proporcion_4']  = $bienTotals['iva_4']  > 0 ? round($bienTotals['iva_4']  / 0.04, 2) : 0;
     $bienTotals['proporcion_13'] = $bienTotals['iva_13'] > 0 ? round($bienTotals['iva_13'] / 0.13, 2) : 0;
 
+    $srvTotals['iva_total']      = round($srvTotals['iva_1'] + $srvTotals['iva_10'] + $srvTotals['iva_13'], 2);
+    $srvTotals['proporcion_1']   = $srvTotals['iva_1']  > 0 ? round($srvTotals['iva_1']  / 0.01, 2) : 0;
+    $srvTotals['proporcion_10']  = $srvTotals['iva_10'] > 0 ? round($srvTotals['iva_10'] / 0.10, 2) : 0;
+    $srvTotals['proporcion_13']  = $srvTotals['iva_13'] > 0 ? round($srvTotals['iva_13'] / 0.13, 2) : 0;
+
+    // ── Resumen Combinado ───────────────────────────────────────────────────
+    $iva13Combinado       = round($bienTotals['iva_13'] + $srvTotals['iva_13'], 2);
+    $totalIvaGastos       = round($bienTotals['iva_total'] + $srvTotals['iva_total'], 2);
+    $proporcion13Combinada= $iva13Combinado > 0 ? round($iva13Combinado / 0.13, 2) : 0;
+    $proporcionBienesOtras= $bienTotals['proporcion_1'] + $bienTotals['proporcion_2'] + $bienTotals['proporcion_4'];
+    $proporcionTotal      = round($proporcionBienesOtras + $proporcion13Combinada, 2);
     $srvTotals['iva_total']      = round($srvTotals['iva_1'] + $srvTotals['iva_4'] + $srvTotals['iva_10'] + $srvTotals['iva_13'], 2);
     $srvTotals['proporcion_1']   = $srvTotals['iva_1']  > 0 ? round($srvTotals['iva_1']  / 0.01, 2) : 0;
     $srvTotals['proporcion_4']   = $srvTotals['iva_4']  > 0 ? round($srvTotals['iva_4']  / 0.04, 2) : 0;
@@ -206,11 +320,11 @@ try {
     $proporcionTotal       = round($proporcionBienesOtras + $proporcion13Combinada, 2);
 
     $combinado = [
-        'iva_13_combinado'       => $iva13Combinado,
-        'proporcion_13_combinado'=> $proporcion13Combinada,
-        'total_iva_gastos'       => $totalIvaGastos,
-        'proporcion_bienes_otras'=> round($proporcionBienesOtras, 2),
-        'proporcion_total'       => $proporcionTotal,
+        'iva_13_combinado'        => $iva13Combinado,
+        'proporcion_13_combinado' => $proporcion13Combinada,
+        'total_iva_gastos'        => $totalIvaGastos,
+        'proporcion_bienes_otras' => round($proporcionBienesOtras, 2),
+        'proporcion_total'        => $proporcionTotal,
     ];
 
     jsonOut([
